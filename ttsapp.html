@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>CSV Reader</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+    }
+
+    table {
+      border-collapse: collapse;
+      margin-top: 10px;
+      width: 100%;
+    }
+
+    td {
+      border: 1px solid #ccc;
+      padding: 6px;
+      cursor: pointer;
+    }
+
+    tr.active {
+      background-color: #ffeaa7;
+    }
+
+    td.active-cell {
+      background-color: #fab1a0;
+    }
+
+    button {
+      margin: 5px 5px 0 0;
+      padding: 6px 12px;
+    }
+
+    .controls {
+      margin-top: 10px;
+    }
+
+    .column-controls {
+      margin-top: 15px;
+      padding: 10px;
+      border: 1px solid #ccc;
+    }
+
+    .char-mode {
+      background-color: #dfe6e9;
+    }
+
+    select {
+      padding: 4px;
+      margin-left: 6px;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>CSV Line Reader</h2>
+
+  <input type="file" id="fileInput" accept=".csv" />
+  <br>
+
+  <button id="playBtn" disabled>Read CSV</button>
+  <button id="toggleBtn" disabled>Pause</button>
+
+  <div class="controls">
+    <label>
+      Voice:
+      <select id="voiceSelect"></select>
+    </label>
+  </div>
+
+  <div class="controls">
+    <label>
+      Speed:
+      <input type="range" id="speed" min="0.5" max="2" step="0.1" value="1">
+      <span id="speedVal">1.0</span>x
+    </label>
+  </div>
+
+  <div class="controls">
+    <label>
+      Pause between cells:
+      <input type="range" id="pause" min="0" max="2000" step="100" value="500">
+      <span id="pauseVal">500</span> ms
+    </label>
+  </div>
+
+  <div class="controls">
+    <label>
+      Pause between characters:
+      <input type="range" id="charPause" min="0" max="1000" step="50" value="200">
+      <span id="charPauseVal">200</span> ms
+    </label>
+  </div>
+
+  <div id="columnControls" class="column-controls"></div>
+
+  <table id="csvTable"></table>
+
+  <script>
+    const fileInput = document.getElementById("fileInput");
+    const playBtn = document.getElementById("playBtn");
+    const toggleBtn = document.getElementById("toggleBtn");
+    const table = document.getElementById("csvTable");
+    const columnControls = document.getElementById("columnControls");
+
+    const speedInput = document.getElementById("speed");
+    const speedVal = document.getElementById("speedVal");
+    const pauseInput = document.getElementById("pause");
+    const pauseVal = document.getElementById("pauseVal");
+    const charPauseInput = document.getElementById("charPause");
+    const charPauseVal = document.getElementById("charPauseVal");
+    const voiceSelect = document.getElementById("voiceSelect");
+
+    let rows = [];
+    let currentRow = 0;
+    let currentCell = 0;
+    let currentChar = 0;
+
+    let isPaused = false;
+    let rate = 1;
+    let pauseMs = 500;
+    let charPauseMs = 200;
+
+    let voices = [];
+    let selectedVoice = null;
+    let columnModes = [];
+
+    speechSynthesis.onvoiceschanged = loadVoices;
+
+    function loadVoices() {
+      voices = speechSynthesis.getVoices();
+      voiceSelect.innerHTML = "";
+
+      voices.forEach((voice, i) => {
+        const option = document.createElement("option");
+        option.value = i;
+        option.textContent = `${voice.name} (${voice.lang})`;
+        voiceSelect.appendChild(option);
+      });
+
+      if (voices.length) {
+        selectedVoice = voices[0];
+        voiceSelect.value = 0;
+      }
+    }
+
+    voiceSelect.addEventListener("change", () => {
+      selectedVoice = voices[voiceSelect.value];
+    });
+
+    fileInput.addEventListener("change", () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = e => {
+        parseCSV(e.target.result);
+        renderTable();
+        renderColumnControls();
+        playBtn.disabled = false;
+        toggleBtn.disabled = false;
+      };
+      reader.readAsText(file);
+    });
+
+    playBtn.addEventListener("click", () => {
+      startFrom(currentRow, currentCell);
+    });
+
+    toggleBtn.addEventListener("click", () => {
+      if (!speechSynthesis.speaking) return;
+
+      if (isPaused) {
+        speechSynthesis.resume();
+        toggleBtn.textContent = "Pause";
+      } else {
+        speechSynthesis.pause();
+        toggleBtn.textContent = "Play";
+      }
+      isPaused = !isPaused;
+    });
+
+    speedInput.addEventListener("input", () => {
+      rate = parseFloat(speedInput.value);
+      speedVal.textContent = rate.toFixed(1);
+    });
+
+    pauseInput.addEventListener("input", () => {
+      pauseMs = parseInt(pauseInput.value);
+      pauseVal.textContent = pauseMs;
+    });
+
+    charPauseInput.addEventListener("input", () => {
+      charPauseMs = parseInt(charPauseInput.value);
+      charPauseVal.textContent = charPauseMs;
+    });
+
+    function parseCSV(text) {
+      rows = text.trim().split("\n").map(line => line.split(","));
+      columnModes = new Array(rows[0].length).fill("word");
+    }
+
+    function renderTable() {
+      table.innerHTML = "";
+
+      rows.forEach((row, r) => {
+        const tr = document.createElement("tr");
+        tr.dataset.row = r;
+
+        row.forEach((cell, c) => {
+          const td = document.createElement("td");
+          td.textContent = cell;
+
+          td.onclick = () => startFrom(r, c);
+          tr.appendChild(td);
+        });
+
+        table.appendChild(tr);
+      });
+    }
+
+    function renderColumnControls() {
+      columnControls.innerHTML = "<strong>Column Reading Modes</strong><br>";
+
+      columnModes.forEach((mode, i) => {
+        const btn = document.createElement("button");
+        btn.textContent = `Column ${i + 1}: ${mode === "word" ? "Word" : "Char"}`;
+        if (mode === "char") btn.classList.add("char-mode");
+
+        btn.onclick = () => {
+          columnModes[i] = mode === "word" ? "char" : "word";
+          renderColumnControls();
+        };
+
+        columnControls.appendChild(btn);
+      });
+    }
+
+    function startFrom(row, cell) {
+      speechSynthesis.cancel();
+      speechSynthesis.resume();
+
+      currentRow = row;
+      currentCell = cell;
+      currentChar = 0;
+      isPaused = false;
+      toggleBtn.textContent = "Pause";
+
+      speakNext();
+    }
+
+    function speakNext() {
+      if (currentRow >= rows.length) return;
+
+      highlight(currentRow, currentCell);
+
+      const mode = columnModes[currentCell];
+      const text = rows[currentRow][currentCell];
+
+      if (mode === "char") {
+        speakCharByChar(text);
+      } else {
+        speakWhole(text);
+      }
+    }
+
+    function speakWhole(text) {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = rate;
+      if (selectedVoice) utterance.voice = selectedVoice;
+
+      utterance.onend = () => {
+        setTimeout(nextCell, pauseMs);
+      };
+
+      speechSynthesis.speak(utterance);
+    }
+
+    function speakCharByChar(text) {
+      if (currentChar >= text.length) {
+        currentChar = 0;
+        setTimeout(nextCell, pauseMs);
+        return;
+      }
+
+      const utterance = new SpeechSynthesisUtterance(text[currentChar]);
+      utterance.rate = rate;
+      if (selectedVoice) utterance.voice = selectedVoice;
+
+      utterance.onend = () => {
+        setTimeout(() => {
+          currentChar++;
+          speakCharByChar(text);
+        }, charPauseMs);
+      };
+
+      speechSynthesis.speak(utterance);
+    }
+
+    function nextCell() {
+      currentCell++;
+      currentChar = 0;
+
+      if (currentCell >= rows[currentRow].length) {
+        currentCell = 0;
+        currentRow++;
+      }
+
+      speakNext();
+    }
+
+    function highlight(r, c) {
+      document.querySelectorAll("tr").forEach(tr =>
+        tr.classList.remove("active")
+      );
+      document.querySelectorAll("td").forEach(td =>
+        td.classList.remove("active-cell")
+      );
+
+      const row = document.querySelectorAll("tr")[r];
+      if (!row) return;
+      row.classList.add("active");
+
+      const cell = row.children[c];
+      if (cell) cell.classList.add("active-cell");
+    }
+  </script>
+
+</body>
+</html>
