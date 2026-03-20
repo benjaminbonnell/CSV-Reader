@@ -257,6 +257,10 @@
       text-align: left;
     }
     .col-btn:hover { background: var(--bg); }
+    .col-btn.mode-is-word { border-left: 3px solid #86efac; background: #f0fdf4; }
+    .col-btn.mode-is-char { border-left: 3px solid #fcd34d; background: #fffbeb; }
+    .col-btn.mode-is-nato { border-left: 3px solid #c4b5fd; background: #f5f3ff; }
+    .col-btn.mode-is-skip { border-left: 3px solid #cbd5e1; background: #f8fafc; }
     .col-btn .col-label { color: var(--text-muted); font-family: var(--mono); font-size: 11px; min-width: 60px; }
     .col-btn .mode-badge {
       font-family: var(--mono);
@@ -360,10 +364,22 @@
       color: #92400e;
     }
 
-    td.col-skipped {
-      color: #cbd5e1;
-      font-style: italic;
-    }
+    /* Per-column mode coloring */
+    td.col-word   { background: #f0fdf4; }
+    td.col-char   { background: #fffbeb; }
+    td.col-nato   { background: #f5f3ff; }
+    td.col-skip   { background: #f8fafc; color: #cbd5e1; font-style: italic; }
+
+    th.col-word   { background: #dcfce7; color: #15803d; border-bottom-color: #86efac; }
+    th.col-char   { background: #fef3c7; color: #92400e; border-bottom-color: #fcd34d; }
+    th.col-nato   { background: #ede9fe; color: #6d28d9; border-bottom-color: #c4b5fd; }
+    th.col-skip   { background: #f1f5f9; color: #94a3b8; border-bottom-color: #cbd5e1; }
+
+    /* Keep hover/active states readable on top of column tints */
+    tr:hover td.col-word { background: #dcfce7; }
+    tr:hover td.col-char { background: #fef3c7; }
+    tr:hover td.col-nato { background: #ede9fe; }
+    tr:hover td.col-skip { background: #e2e8f0; }
 
     /* Responsive */
     @media (max-width: 720px) {
@@ -649,6 +665,8 @@
         rows[0].forEach((_, c) => {
           const th = document.createElement('th');
           th.textContent = `Col ${c + 1}`;
+          th.dataset.col = c;
+          th.className = `col-${columnModes[c]}`;
           htr.appendChild(th);
         });
         thead.appendChild(htr);
@@ -664,7 +682,7 @@
           const td = document.createElement('td');
           td.textContent = cell;
           td.dataset.col = c;
-          if (columnModes[c] === 'skip') td.classList.add('col-skipped');
+          td.className = `col-${columnModes[c]}`;
           td.onclick = () => startFrom(r, c);
           tr.appendChild(td);
         });
@@ -680,7 +698,7 @@
 
       columnModes.forEach((mode, i) => {
         const btn = document.createElement('button');
-        btn.className = 'col-btn';
+        btn.className = `col-btn mode-is-${columnModes[i]}`;
 
         const label = document.createElement('span');
         label.className = 'col-label';
@@ -697,19 +715,21 @@
           const idx = MODES.indexOf(mode);
           columnModes[i] = MODES[(idx + 1) % MODES.length];
           renderColumnControls();
-          // Update table cell styling for skipped columns
-          updateSkippedCells();
+          updateColumnColors();
         };
 
         columnControls.appendChild(btn);
       });
     }
 
-    function updateSkippedCells() {
-      document.querySelectorAll('td').forEach(td => {
+    function updateColumnColors() {
+      document.querySelectorAll('td[data-col]').forEach(td => {
         const c = parseInt(td.dataset.col);
-        if (columnModes[c] === 'skip') td.classList.add('col-skipped');
-        else td.classList.remove('col-skipped');
+        td.className = `col-${columnModes[c]}`;
+      });
+      document.querySelectorAll('th[data-col]').forEach(th => {
+        const c = parseInt(th.dataset.col);
+        th.className = `col-${columnModes[c]}`;
       });
     }
 
